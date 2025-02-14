@@ -7,11 +7,11 @@ class Rocket:
     # Create a rocket object with properties corresponding to the follwing input dispersions
     def __init__(self, thrust, thrust_tolerance, dry_mass, dry_mass_tolerance, wet_mass, wet_mass_tolerance, mixture_ratio, mixture_ratio_tolerance, burn_duration, burn_duration_tolerance, dt):
         # Normal distributions are within three STD DEV of the mean
-        self.thrust = (stats.truncnorm.rvs(-3, 3, loc=thrust, scale=thrust_tolerance, size=1)) * 1000 # Normal, scaled from [kN] to [N]
+        self.thrust = (stats.truncnorm.rvs(-3, 3, loc=thrust, scale=thrust_tolerance/3, size=1)) * 1000 # Normal, scaled from [kN] to [N]
         self.dry_mass = dry_mass + np.random.uniform(low=-dry_mass_tolerance, high=dry_mass_tolerance, size=1) # Uniform
-        self.wet_mass = stats.truncnorm.rvs(-3, 3, loc=wet_mass, scale = wet_mass_tolerance, size=1) # Normal
+        self.wet_mass = stats.truncnorm.rvs(-3, 3, loc=wet_mass, scale = wet_mass_tolerance/3, size=1) # Normal
         self.mixture_ratio = mixture_ratio + np.random.uniform(low=-mixture_ratio_tolerance, high=mixture_ratio_tolerance, size=1) # Uniform
-        self.burn_duration = stats.truncnorm.rvs(-3, 3, loc=burn_duration, scale = burn_duration_tolerance, size=1) # Nomral
+        self.burn_duration = stats.truncnorm.rvs(-3, 3, loc=burn_duration, scale = burn_duration_tolerance/3, size=1) # Nomral
         self.initial_accel = 9.81 * self.mixture_ratio ** 0.4
         self.time = np.array(np.arange(0, self.burn_duration+dt, dt)) # Time vector to track ox and fuel depletion
 
@@ -231,11 +231,13 @@ def main():
     for i in range(3):
         ax5.axvline(mu_payload_mass + (i+1)*sigma_payload_mass, color='r', linestyle='dotted', linewidth=1)
         ax5.axvline(mu_payload_mass - (i+1)*sigma_payload_mass, color='r', linestyle='dotted', linewidth=1)
-    print(mu_payload_mass)
-    print(sigma_payload_mass)
+
 
     fig5.suptitle(f'Mass to Orbit for {N} Rockets')
     plt.show()
+
+    print(mu_ox_flowrate)
+    print(sigma_ox_flowrate)
 
     # # Verify that all mass-to-orbit values lie within 3 STD DEV of the mean
     # Z_score_list = (payload_mass_list - mu_payload_mass) / sigma_payload_mass
