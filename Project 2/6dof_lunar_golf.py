@@ -108,7 +108,7 @@ def multiply_quaternions(q1, q2):
         return q_new
 
 def main():
-    N = 500 # Number of test cases 
+    N = 1 # Number of test cases 
     num_bins = int(np.ceil(np.sqrt(N)))
 
     initial_velocity = 85 # [m/s]
@@ -120,8 +120,8 @@ def main():
     aim_misalignment = 0 # [deg]
     aim_misalignment_tol = 3 # [deg]
 
-    initial_spinrate = 2000 # [rpm]
-    initial_spinrate_tol = 500 # [rpm]
+    initial_spinrate = 30 # [rpm]
+    initial_spinrate_tol = 0 # [rpm]
 
     spin_misalignment = 0 # [deg]
     spin_misalignment_tol = 3 # [deg]
@@ -129,7 +129,9 @@ def main():
     dt = 0.1 # [s]
 
     lunar_radius = 1737.4 * 1000 # [m]
-    fig1, ((ax1_1, ax1_2, ax1_3), (ax1_4, ax1_5, ax1_6), (ax1_7, ax1_8, ax1_9)) = plt.subplots(3, 3, figsize=(20, 20)) # Yarnball Plots
+
+    # Yarnball Plots
+    fig1, ((ax1_1, ax1_2, ax1_3), (ax1_4, ax1_5, ax1_6), (ax1_7, ax1_8, ax1_9)) = plt.subplots(3, 3, figsize=(20, 20)) 
     ax1_1.grid(True)
     ax1_1.set_xlabel('Downrange Distance [m]')
     ax1_1.set_ylabel('Altitude [m]')
@@ -147,18 +149,19 @@ def main():
     ax1_5.set_ylabel('Quaternion $z$')
     ax1_6.grid(True)
     ax1_6.set_xlabel('Time [s]')
-    ax1_6.set_ylabel('Roll [rad]')
+    ax1_6.set_ylabel('Roll [deg]')
     ax1_7.grid(True)
     ax1_7.set_xlabel('Time [s]')
-    ax1_7.set_ylabel('Pitch [rad]')
+    ax1_7.set_ylabel('Pitch [deg]')
     ax1_8.grid(True)
     ax1_8.set_xlabel('Time [s]')
-    ax1_8.set_ylabel('Yaw [rad]')
+    ax1_8.set_ylabel('Yaw [deg]')
     ax1_9.set_xlabel('Time [s]')
-    ax1_9.set_ylabel('Total Spin Angle [rad]')
+    ax1_9.set_ylabel('Total Spin Angle [deg]')
     ax1_9.grid(True)
 
-    fig2, (ax2_1, ax2_2, ax2_3) = plt.subplots(3, 1, figsize=(7.5, 10)) # Scatter Plots
+    # Scatter Plots
+    fig2, (ax2_1, ax2_2, ax2_3) = plt.subplots(3, 1, figsize=(7.5, 10)) 
     ax2_1.grid(True)
     ax2_1.set_xlabel('Longitude [deg]')
     ax2_1.set_ylabel('Latitude [deg]')
@@ -169,7 +172,8 @@ def main():
     ax2_3.set_xlabel('Maximum Downrange Distance [m]')
     ax2_3.set_ylabel('Aiming Misalignment [deg]')
     
-    fig3 = plt.figure(figsize=(9, 6)) # 3D Trajectory Plot
+    # 3D Trajectory Plot
+    fig3 = plt.figure(figsize=(9, 6)) 
     ax3 = fig3.add_subplot(111, projection='3d')
     ax3.set_xlabel('$x$ [m]')
     ax3.set_ylabel('$y$ [m]')
@@ -230,11 +234,11 @@ def main():
         z_position = position[:, 2].reshape(len(time), 1)
         downrange_distance = np.sqrt(x_position**2 + y_position**2) 
         # TODO: add lunar radius?
-        radial_distance = np.sqrt((lunar_radius+x_position)**2 + (lunar_radius+y_position)**2 + (lunar_radius+z_position)**2)
+        radial_distance = np.sqrt((x_position)**2 + (y_position)**2 + (z_position)**2)
         radial_distance = np.clip(radial_distance, 1e-10, np.inf)  # Avoid dividing by very small values
         # TODO: check this calc
-        latitude = np.rad2deg(np.arcsin((lunar_radius+z_position)/radial_distance))
-        longitude = np.rad2deg(np.arctan2(y_position, x_position))
+        latitude = np.rad2deg(np.arcsin((z_position)/radial_distance))
+        longitude = np.rad2deg(np.arctan2(y_position, radial_distance))
 
         v0_list = np.append(ball.initial_velocity, v0_list)
         phi_list = np.append(ball.launch_angle, phi_list)
@@ -257,9 +261,9 @@ def main():
         # z = np.clip(z, 1e-10, np.inf)
 
         # Euler angles
-        roll = np.arctan2((2 * (w*x + y*z)), 1 - 2*(x**2 + y**2))
+        roll = np.atan2((2 * (w*x + y*z)), 1 - 2*(x**2 + y**2))
         pitch = np.arcsin(2 * (w*y - z*x))
-        yaw = np.arctan2(2 * (w*z + x*y), 1 - 2*(y**2 + z**2))
+        yaw = np.atan2(2 * (w*z + x*y), 1 - 2*(y**2 + z**2))
 
         # Plots
         # Yarnballs
@@ -268,10 +272,10 @@ def main():
         ax1_3.plot(time, x, alpha=0.5)
         ax1_4.plot(time, y, alpha=0.5)
         ax1_5.plot(time, z, alpha=0.5)
-        ax1_6.plot(time, roll, alpha=0.5)
-        ax1_7.plot(time, pitch, alpha=0.5)
-        ax1_8.plot(time, yaw, alpha=0.5)
-        ax1_9.plot(time, theta_spin_list, alpha=0.5)
+        ax1_6.plot(time, np.rad2deg(roll), alpha=0.5)
+        ax1_7.plot(time, np.rad2deg(pitch), alpha=0.5)
+        ax1_8.plot(time, np.rad2deg(yaw), alpha=0.5)
+        ax1_9.plot(time, np.rad2deg(theta_spin_list), alpha=0.5)
 
         # Scatters
         ax2_1.scatter(longitude[-1], latitude[-1]) # landing latitude and longitude
@@ -281,7 +285,7 @@ def main():
         # 3D
         fig3.suptitle(f'3D Trajectory Visualization')
         ax3.plot(x_position, y_position, z_position, alpha=0.5)
-
+    
     # Histograms
     ax4_1.hist(v0_list, bins=num_bins)
     ax4_2.hist(phi_list, bins=num_bins)
