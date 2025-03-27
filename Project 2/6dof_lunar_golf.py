@@ -66,7 +66,6 @@ class GolfBall:
         orientation = np.empty((0, 3)) # Orientation with x, y, z components at each timestep
 
         for i in range(len(time)):
-     
             qdot = 0.5 * multiply_quaternions(q, omega_q) # Quaternion differential as defined in lecture
 
             q = q + qdot*dt # Rotate by this quaternion
@@ -266,9 +265,9 @@ def main():
         # z = np.clip(z, 1e-10, np.inf)
 
         # Euler angles
-        roll = np.arctan2((2 * (w*x + y*z)), 1 - 2*(x**2 + y**2))
+        roll = np.atan2((2 * (w*x + y*z)), 1 - 2*(x**2 + y**2))
         pitch = np.arcsin(2 * (w*y - z*x))
-        yaw = np.arctan2(2 * (w*z + x*y), 1 - 2*(y**2 + z**2))
+        yaw = np.atan2(2 * (w*z + x*y), 1 - 2*(y**2 + z**2))
 
         # Plots
         # Yarnballs
