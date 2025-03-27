@@ -48,49 +48,54 @@ class GolfBall:
         return position, velocity, time
     
     def get_orientation(self, spin_misalignment, initial_spinrate, dt, time):
-        theta_spin = 0
         alpha = np.deg2rad(spin_misalignment) # Spin misalignment angle [rad]
         
         # Unit spin axis in body frame from spin misalignment
         # Assume spin does not affect the trajectory
-        ux = np.sin(alpha).item()
+        ux = float(np.sin(alpha))
         uy = 0.0
-        uz = np.cos(alpha).item()
+        uz = float(np.cos(alpha))
 
-        angular_velocity = initial_spinrate * 2*np.pi/60 # [rad/s]
+        angular_velocity = float(initial_spinrate) * 2*np.pi/60 # [rad/s]
 
-        vq = np.array([0, ux, uy, uz]) # Pure quaternion representing the spin axis
-        q = np.array([])
-        q_inv = np.array([])
+        q = np.array([1.0, 0.0, 0.0, 0.0]) # Initial quaternion (no rotation)
+        omega_q = np.array([0.0, angular_velocity * ux, angular_velocity * uy, angular_velocity * uz])
+
         theta_spin_list = np.array([])
-
         quaternion = np.empty((0, 4)) # Quaternion with w, x, y, z components at each timestep 
         orientation = np.empty((0, 3)) # Orientation with x, y, z components at each timestep
 
         for i in range(len(time)):
-            q = np.array([np.cos(theta_spin/2), 
-                ux * np.sin(theta_spin/2),
-                uy * np.sin(theta_spin/2),
-                uz * np.sin(theta_spin/2)]) # Rotation quaternion
-            
-            q_inv = np.array([q[0],
-                    -q[1],
-                    -q[2],
-                    -q[3]])
-            
-            # Normalize to unit quaternions
-            q = q / np.linalg.norm(q)
-            q_inv = q_inv / np.linalg.norm(q_inv)
-            
-            v_prime = multiply_quaternions(multiply_quaternions(q, vq), q_inv) # New orientation vector
+     
+            qdot = 0.5 * multiply_quaternions(q, omega_q) # Quaternion differential as defined in lecture
 
-            w, x, y, z = v_prime # New rotated quaternion components in body frame, i.e. rotated version of spin axis
+            q = q + qdot*dt # Rotate by this quaternion
+            q = q / np.linalg.norm(q)
+
+            w, x, y, z = q
+            
+            # q_inv = np.array([q[0],
+            #         -q[1],
+            #         -q[2],
+            #         -q[3]])
+            
+            # vq = np.array([0, ux, uy, uz]) # Pure quaternion representing the spin axis, rotate about this axis
+            # vq = vq / np.linalg.norm(vq)
+
+            # v_prime = multiply_quaternions(multiply_quaternions(q, vq), q_inv) # New orientation in body frame, q_new
+
+            # w, x, y, z = v_prime # Quaternion components
+
+            # New spin axis
+            ux = x
+            uy = y
+            uz = z
+
 
             quaternion = np.vstack((quaternion, np.array([w, x, y, z]).reshape(1, 4)))
             orientation = np.vstack((orientation, np.array([x, y, z]).reshape(1, 3)))
 
-            theta_spin += angular_velocity * dt # Rotation angle as defined for quaternion [rad], i.e. total rotated angle
-            
+            theta_spin = np.arccos(q[0]) * 2
             theta_spin_list = np.append(theta_spin_list, theta_spin)
 
         return quaternion, orientation, theta_spin_list
@@ -108,7 +113,7 @@ def multiply_quaternions(q1, q2):
         return q_new
 
 def main():
-    N = 1 # Number of test cases 
+    N = 10 # Number of test cases 
     num_bins = int(np.ceil(np.sqrt(N)))
 
     initial_velocity = 85 # [m/s]
@@ -120,7 +125,7 @@ def main():
     aim_misalignment = 0 # [deg]
     aim_misalignment_tol = 3 # [deg]
 
-    initial_spinrate = 30 # [rpm]
+    initial_spinrate = 10 # [rpm]
     initial_spinrate_tol = 0 # [rpm]
 
     spin_misalignment = 0 # [deg]
@@ -233,10 +238,10 @@ def main():
         y_position = position[:, 1].reshape(len(time), 1)
         z_position = position[:, 2].reshape(len(time), 1)
         downrange_distance = np.sqrt(x_position**2 + y_position**2) 
-        # TODO: add lunar radius?
+        # TODO: lunar radius?
         radial_distance = np.sqrt((x_position)**2 + (y_position)**2 + (z_position)**2)
         radial_distance = np.clip(radial_distance, 1e-10, np.inf)  # Avoid dividing by very small values
-        # TODO: check this calc
+        # TODO: CHECK THIS CALC
         latitude = np.rad2deg(np.arcsin((z_position)/radial_distance))
         longitude = np.rad2deg(np.arctan2(y_position, radial_distance))
 
@@ -261,9 +266,9 @@ def main():
         # z = np.clip(z, 1e-10, np.inf)
 
         # Euler angles
-        roll = np.atan2((2 * (w*x + y*z)), 1 - 2*(x**2 + y**2))
+        roll = np.arctan2((2 * (w*x + y*z)), 1 - 2*(x**2 + y**2))
         pitch = np.arcsin(2 * (w*y - z*x))
-        yaw = np.atan2(2 * (w*z + x*y), 1 - 2*(y**2 + z**2))
+        yaw = np.arctan2(2 * (w*z + x*y), 1 - 2*(y**2 + z**2))
 
         # Plots
         # Yarnballs
