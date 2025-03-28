@@ -13,34 +13,50 @@ class GolfBall:
         self.spin_misalignment = stats.truncnorm.rvs(-3, 3, loc=spin_misalignment, scale=spin_misalignment_tol/3, size=1)
     
     def get_trajectory(self, v0, aim_misalignment, launch_angle, dt):
+        R = 1737.4 * 1000 # Lunar radius, [m]
+        
         theta = np.deg2rad(aim_misalignment) # Azimuthal angle WRT +x-axis, derived from aiming misalignment [rad]
         phi = np.deg2rad(90-launch_angle) # Inclination angle WRT +z-axis, derived from launch angle [rad]
 
-        # Velocity components from spherical angles
-        vx = v0 * np.sin(phi) * np.cos(theta)
-        vy = v0 * np.sin(phi) * np.sin(theta)
-        vz = v0 * np.cos(phi)
+        # Velocity from spherical angles
+        vx = float(v0 * np.sin(phi) * np.cos(theta))
+        vy = float(v0 * np.sin(phi) * np.sin(theta))
+        vz = float(v0 * np.cos(phi))
+
+        # Position from spherical angles
+        # x = float(R * np.sin(phi) * np.cos(theta))
+        # y = float(R * np.sin(phi) * np.sin(theta))
+        # z = float(R * np.cos(phi))
+
+        x = R
+        y = 0
+        z = 0
+        r = np.array([x, y, z])
         
         g = 1.625 # Lunar gravitational acceleration [m/s^2]
         t = 0
-                
-        [x, y, z] = np.array([0, 0, 0]) # Instantaenous position vector [m]
         time = np.array([]) # Time vector [s] 
         
-        position = np.empty((0, 3)) # Trajectory with x, y, z positions at each timestep [m]
-        velocity = np.empty((0, 3)) # Velocity with x, y, z velocities at each timestep [m/s]
+        position = np.empty((0, 3)) # Trajectory with x, y, z at each timestep [m]
+        velocity = np.empty((0, 3)) # Velocity with x, y, z at each timestep [m/s]
 
-        while z >= 0: # Impact detection
-            # Store position and velocity of the previous timestep
+        while np.linalg.norm(r) >= R: # Impact detection
+            # Position and velocity of the previous timestep
             position = np.vstack((position, np.array([x, y, z]).reshape(1, 3)))
             velocity = np.vstack((velocity, np.array([vx, vy, vz]).reshape(1, 3)))
 
-            vz += -g * dt # Only gravity acts after launch
+            dv = (-g * (r / np.linalg.norm(r))) * dt
 
-            # Compute position at the current timestep
+            vx += dv[0]
+            vy += dv[1]
+            vz += dv[2]
+
+            # Position at the current timestep
             x += vx * dt
             y += vy * dt
             z += vz * dt
+
+            r = np.array([x, y, z])
 
             t += dt
             time = np.append(time, t)
@@ -55,11 +71,11 @@ class GolfBall:
         uy = 0.0
         uz = float(np.cos(alpha))
 
-        angular_velocity = float(initial_spinrate) * 2*np.pi/60 # [rad/s]
+        omega = float(initial_spinrate) * 2*np.pi/60 # [rad/s]
 
         q = np.array([1.0, 0.0, 0.0, 0.0]) # Initial quaternion (no rotation)
 
-        # omega_q = np.array([0.0, angular_velocity * ux, angular_velocity * uy, angular_velocity * uz])
+        # omega_q = np.array([0.0, omega * ux, omega * uy, omega * uz])
 
         theta_spin_list = np.array([])
         quaternion = np.empty((0, 4)) # Quaternion with w, x, y, z components at each timestep 
@@ -67,15 +83,9 @@ class GolfBall:
 
         for i in range(len(time)):
             q0, q1, q2, q3 = q
-            w1 = ux * angular_velocity
-            w2 = uy * angular_velocity
-            w3 = uz * angular_velocity
-
-            # q_matrix = np.array([[-q1, -q2, -q3],
-            #                     [q0, -q3, q2],
-            #                     [q3, q0, -q1],
-            #                     [-q2, q1, q0]
-            #                     ])
+            w1 = ux * omega
+            w2 = uy * omega
+            w3 = uz * omega
 
             Omega = np.array([[0,    w3,  -w2,  w1],
                               [-w3,  0,    w1,  w2],
@@ -83,19 +93,9 @@ class GolfBall:
                               [-w1, -w2,  -w3,   0]
                               ])
             
-            # Omega = np.array([[0, -w1, -w2,  -w3],
-            #                   [w2,  0, -w1,   w3],
-            #                   [-w3, w1, 0,  w2],
-            #                   [w3,  -w2,  w1, 0],
-            #         ])
 
-            # qdot = 0.5 * multiply_quaternions(q, omega_q) # Quaternion differential
-            # q = q + qdot*dt # Rotate by this quaternion
+            q  = q + (0.5 * Omega @ q)*dt # q = q + q_dot * dt
 
-            q  = q + (0.5 * Omega @ q)*dt # q = q + qdot * dt
-            
-            # qdot = 0.5 * q_matrix * np.array([w1, w2, w3])
-            # q = q + qdot * dt
             q = q / np.linalg.norm(q)
 
             w, x, y, z = q
@@ -121,7 +121,7 @@ def multiply_quaternions(q1, q2):
         return q_new
 
 def main():
-    N = 10 # Number of test cases 
+    N = 100 # Number of test cases 
     num_bins = int(np.ceil(np.sqrt(N)))
 
     initial_velocity = 85 # [m/s]
@@ -133,15 +133,15 @@ def main():
     aim_misalignment = 0 # [deg]
     aim_misalignment_tol = 3 # [deg]
 
-    initial_spinrate = 20 # [rpm]
+    initial_spinrate = 10 # [rpm]
     initial_spinrate_tol = 0 # [rpm]
 
     spin_misalignment = 0 # [deg]
     spin_misalignment_tol = 3 # [deg]
 
-    dt = 1 # [s]
+    dt = 0.1 # [s]
 
-    lunar_radius = 1737.4 * 1000 # [m]
+    R_moon = 1737.4 * 1000 # [m]
 
     # Yarnball Plots
     fig1, ((ax1_1, ax1_2, ax1_3), (ax1_4, ax1_5, ax1_6), (ax1_7, ax1_8, ax1_9)) = plt.subplots(3, 3, figsize=(20, 20)) 
@@ -244,23 +244,28 @@ def main():
         # Trajectory
         x_position = position[:, 0].reshape(len(time), 1)
         y_position = position[:, 1].reshape(len(time), 1)
-        z_position = position[:, 2].reshape(len(time), 1)
-        downrange_distance = np.sqrt(x_position**2 + y_position**2) 
+        z_position = position[:, 2].reshape(len(time), 1) 
+        # x_position = position[:, 0].reshape(len(time), 1) - float((R_moon * np.sin(np.deg2rad(90-ball.launch_angle))) * np.cos(np.deg2rad(ball.aim_misalignment)))
+        # y_position = position[:, 1].reshape(len(time), 1) - float((R_moon * np.sin(np.deg2rad(90-ball.launch_angle))) * np.sin(np.deg2rad(ball.aim_misalignment)))
+        # z_position = position[:, 2].reshape(len(time), 1) - float((R_moon * np.cos(np.deg2rad(90-ball.launch_angle))))
+        
+        downrange_distance = np.sqrt(y_position**2 + z_position**2)
+        altitude = np.sqrt(x_position**2 + y_position**2 + z_position**2) - R_moon
 
         # TODO: CHECK THESE CALCS
         radial_distance = np.sqrt((x_position)**2 + (y_position)**2 + (z_position)**2)
         radial_distance = np.clip(radial_distance, 1e-10, np.inf)  # Avoid dividing by very small values
-        latitude = np.rad2deg(np.arcsin((z_position)/lunar_radius))
+        latitude = np.rad2deg(np.arcsin((z_position)/R_moon))
         longitude = np.rad2deg(np.arctan2(y_position, radial_distance))
 
-        v0_list = np.append(ball.initial_velocity, v0_list)
-        phi_list = np.append(ball.launch_angle, phi_list)
-        theta_list = np.append(ball.aim_misalignment, theta_list)
-        spin_rate_list = np.append(ball.initial_spinrate, spin_rate_list)
-        alpha_list = np.append(ball.spin_misalignment, alpha_list)
-        duration_list = np.append(time[-1], duration_list)
-        downrange_list = np.append(downrange_distance[-1], downrange_list)
-        altitude_list = np.append(np.max(z_position), altitude_list)
+        v0_list = np.append(v0_list, ball.initial_velocity)
+        phi_list = np.append(phi_list, ball.launch_angle)
+        theta_list = np.append(theta_list, ball.aim_misalignment)
+        spin_rate_list = np.append(spin_rate_list, ball.initial_spinrate)
+        alpha_list = np.append(alpha_list, ball.spin_misalignment)
+        duration_list = np.append(duration_list, time[-1])
+        downrange_list = np.append(downrange_list, np.max(downrange_distance))
+        altitude_list = np.append(altitude_list, np.max(altitude))
 
         # Orientation
         w = quaternion[:, 0].reshape(len(time), 1)
@@ -274,15 +279,10 @@ def main():
         pitch = np.arcsin(2 * (w*y - z*x))
         yaw = np.atan2(2 * (w*z + x*y), 1 - 2*(y**2 + z**2))
 
-        # rotation = R.from_quat(quaternion)
-        # euler_angles = rotation.as_euler('xyz', degrees=True)  # 'xyz' is the rotation order, degrees=True for degrees
-        # roll = euler_angles[:, 0]
-        # pitch = euler_angles[:, 1]
-        # yaw = euler_angles[:, 2]
 
         # Plots
         # Yarnballs
-        ax1_1.plot(downrange_distance, z_position, alpha=0.5)
+        ax1_1.plot(downrange_distance, altitude, alpha=0.5)
         ax1_2.plot(time, w, alpha=0.5)
         ax1_3.plot(time, x, alpha=0.5)
         ax1_4.plot(time, y, alpha=0.5)
@@ -299,7 +299,7 @@ def main():
 
         # 3D
         fig3.suptitle(f'3D Trajectory Visualization')
-        ax3.plot(x_position, y_position, z_position, alpha=0.5)
+        ax3.plot(z_position, y_position, x_position - R_moon, alpha=0.5)
     
     # Histograms
     ax4_1.hist(v0_list, bins=num_bins)
