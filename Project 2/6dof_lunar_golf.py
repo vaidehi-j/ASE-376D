@@ -87,14 +87,30 @@ class GolfBall:
             w2 = uy * omega
             w3 = uz * omega
 
-            Omega = np.array([[0,    w3,  -w2,  w1],
-                              [-w3,  0,    w1,  w2],
-                              [w2,  -w1,   0,   w3],
-                              [-w1, -w2,  -w3,   0]
-                              ])
-            
+            # Omega = np.array([[0,    w3,  -w2,  w1],
+            #                   [-w3,  0,    w1,  w2],
+            #                   [w2,  -w1,   0,   w3],
+            #                   [-w1, -w2,  -w3,   0]
+            #                   ])
 
-            q  = q + (0.5 * Omega @ q)*dt # q = q + q_dot * dt
+            # Omega = np.array([[0, -w1, -w2, -w3],
+            #                   [w1, 0, w3, -w2],
+            #                   [w2, -w3, 0, w1],
+            #                   [w3, w2, -w1, 0]])
+
+            q_matrix = np.array([[-q1, -q2, -q3],
+                                 [q0, -q3, q2],
+                                 [q3, q0, -q1],
+                                 [-q2, q1, q0]
+                                 ])
+            
+            w = np.transpose(np.array([w1, w2, w3]))
+
+            q_dot = 0.5 * q_matrix @ w
+
+            q = q + q_dot * dt
+            
+            # q  = q + (0.5 * Omega @ q)*dt # q = q + q_dot * dt
 
             q = q / np.linalg.norm(q)
 
@@ -278,7 +294,6 @@ def main():
         roll = np.atan2((2 * (w*x + y*z)), 1 - 2*(x**2 + y**2))
         pitch = np.arcsin(2 * (w*y - z*x))
         yaw = np.atan2(2 * (w*z + x*y), 1 - 2*(y**2 + z**2))
-
 
         # Plots
         # Yarnballs
