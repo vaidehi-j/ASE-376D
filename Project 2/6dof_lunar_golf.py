@@ -23,11 +23,7 @@ class GolfBall:
         vy = float(v0 * np.sin(phi) * np.sin(theta))
         vz = float(v0 * np.cos(phi))
 
-        # Position from spherical angles
-        # x = float(R * np.sin(phi) * np.cos(theta))
-        # y = float(R * np.sin(phi) * np.sin(theta))
-        # z = float(R * np.cos(phi))
-
+        # Position
         x = R
         y = 0
         z = 0
@@ -75,28 +71,16 @@ class GolfBall:
 
         q = np.array([1.0, 0.0, 0.0, 0.0]) # Initial quaternion (no rotation)
 
-        # omega_q = np.array([0.0, omega * ux, omega * uy, omega * uz])
-
         theta_spin_list = np.array([])
         quaternion = np.empty((0, 4)) # Quaternion with w, x, y, z components at each timestep 
         orientation = np.empty((0, 3)) # Orientation with x, y, z components at each timestep
 
         for i in range(len(time)):
             q0, q1, q2, q3 = q
+
             w1 = ux * omega
             w2 = uy * omega
             w3 = uz * omega
-
-            # Omega = np.array([[0,    w3,  -w2,  w1],
-            #                   [-w3,  0,    w1,  w2],
-            #                   [w2,  -w1,   0,   w3],
-            #                   [-w1, -w2,  -w3,   0]
-            #                   ])
-
-            # Omega = np.array([[0, -w1, -w2, -w3],
-            #                   [w1, 0, w3, -w2],
-            #                   [w2, -w3, 0, w1],
-            #                   [w3, w2, -w1, 0]])
 
             q_matrix = np.array([[-q1, -q2, -q3],
                                  [q0, -q3, q2],
@@ -109,9 +93,6 @@ class GolfBall:
             q_dot = 0.5 * q_matrix @ w
 
             q = q + q_dot * dt
-            
-            # q  = q + (0.5 * Omega @ q)*dt # q = q + q_dot * dt
-
             q = q / np.linalg.norm(q)
 
             w, x, y, z = q
@@ -137,20 +118,20 @@ def multiply_quaternions(q1, q2):
         return q_new
 
 def main():
-    N = 100 # Number of test cases 
+    N = 500 # Number of test cases 
     num_bins = int(np.ceil(np.sqrt(N)))
 
     initial_velocity = 85 # [m/s]
     initial_velocity_tol = 5 # [m/s]
 
     launch_angle = 45 # [deg]
-    launch_angle_tol = 5 # [deg]
+    launch_angle_tol = 2 # [deg]
 
     aim_misalignment = 0 # [deg]
     aim_misalignment_tol = 3 # [deg]
 
-    initial_spinrate = 10 # [rpm]
-    initial_spinrate_tol = 0 # [rpm]
+    initial_spinrate = 2000 # [rpm]
+    initial_spinrate_tol = 500 # [rpm]
 
     spin_misalignment = 0 # [deg]
     spin_misalignment_tol = 3 # [deg]
@@ -261,18 +242,14 @@ def main():
         x_position = position[:, 0].reshape(len(time), 1)
         y_position = position[:, 1].reshape(len(time), 1)
         z_position = position[:, 2].reshape(len(time), 1) 
-        # x_position = position[:, 0].reshape(len(time), 1) - float((R_moon * np.sin(np.deg2rad(90-ball.launch_angle))) * np.cos(np.deg2rad(ball.aim_misalignment)))
-        # y_position = position[:, 1].reshape(len(time), 1) - float((R_moon * np.sin(np.deg2rad(90-ball.launch_angle))) * np.sin(np.deg2rad(ball.aim_misalignment)))
-        # z_position = position[:, 2].reshape(len(time), 1) - float((R_moon * np.cos(np.deg2rad(90-ball.launch_angle))))
-        
+       
         downrange_distance = np.sqrt(y_position**2 + z_position**2)
         altitude = np.sqrt(x_position**2 + y_position**2 + z_position**2) - R_moon
 
-        # TODO: CHECK THESE CALCS
         radial_distance = np.sqrt((x_position)**2 + (y_position)**2 + (z_position)**2)
         radial_distance = np.clip(radial_distance, 1e-10, np.inf)  # Avoid dividing by very small values
-        latitude = np.rad2deg(np.arcsin((z_position)/R_moon))
-        longitude = np.rad2deg(np.arctan2(y_position, radial_distance))
+        latitude = np.rad2deg(np.arcsin((z_position)/radial_distance))
+        longitude = np.rad2deg(np.arctan2(y_position, x_position))
 
         v0_list = np.append(v0_list, ball.initial_velocity)
         phi_list = np.append(phi_list, ball.launch_angle)
@@ -290,14 +267,13 @@ def main():
         z = quaternion[:, 3].reshape(len(time), 1)  
         
         # Euler angles
-        # TODO: CHECK THESE CALCS
         roll = np.atan2((2 * (w*x + y*z)), 1 - 2*(x**2 + y**2))
         pitch = np.arcsin(2 * (w*y - z*x))
         yaw = np.atan2(2 * (w*z + x*y), 1 - 2*(y**2 + z**2))
 
         # Plots
         # Yarnballs
-        ax1_1.plot(downrange_distance, altitude, alpha=0.5)
+        ax1_1.plot(downrange_distance, x_position - R_moon, alpha=0.5)
         ax1_2.plot(time, w, alpha=0.5)
         ax1_3.plot(time, x, alpha=0.5)
         ax1_4.plot(time, y, alpha=0.5)
@@ -325,6 +301,7 @@ def main():
     ax4_6.hist(duration_list, bins=num_bins)
     ax4_7.hist(downrange_list, bins=num_bins)
     ax4_8.hist(altitude_list, bins=num_bins)
+
 
     plt.show()
 
