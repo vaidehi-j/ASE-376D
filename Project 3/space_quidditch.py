@@ -58,7 +58,7 @@ def update_seeker_state(seeker_position, seeker_velocity, seeker_accel, dt):
 # PPN Guidance
 
 # Determine desired seeker acceleration based on position and velocity of the snitch
-# Reference: https://en.wikipedia.org/wiki/Proportional_navigation#:~:text=Proportional%20navigation%20
+# 3D PN Reference: https://en.wikipedia.org/wiki/Proportional_navigation#:~:text=Proportional%20navigation%20
 def PN_guidance(snitch_state, seeker_state):
     N = 5  # Navigation Gain
 
