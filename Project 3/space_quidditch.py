@@ -24,6 +24,9 @@ max_sim_time = 300 # [s]
 capture_distance = 0.3 # [m] 
 dt = 0.1 # [s]
 
+# State Dynamics
+
+# Snitch travels ellipse in XY plane centered at (9.144, 0, 15.24)
 def get_snitch_state(t):
     theta = 2*np.pi*t / T_snitch # Angle swept by snitch [rad]
     
@@ -43,6 +46,7 @@ def get_snitch_state(t):
 
     return snitch_state
 
+# Update position and velocity of the seeker based on previous state
 def update_seeker_state(seeker_position, seeker_velocity, seeker_accel, dt):
     seeker_velocity += seeker_accel * dt
     seeker_position += seeker_velocity * dt
@@ -51,117 +55,98 @@ def update_seeker_state(seeker_position, seeker_velocity, seeker_accel, dt):
 
     return seeker_state
 
+# PPN Guidance
+
+# Determine desired seeker acceleration based on position and velocity of the snitch
+# Reference: https://en.wikipedia.org/wiki/Proportional_navigation#:~:text=Proportional%20navigation%20
 def PN_guidance(snitch_state, seeker_state):
-    N = 5 # Tunable navigation gain
-    
-    xt, yt, zt = snitch_state[:3]
-    vtx, vty, vtz = snitch_state[-3:]
+    N = 5  # Navigation Gain
 
-    xm, ym, zm = seeker_state[:3]
-    vmx, vmy, vmz = seeker_state[-3:]
-    
-    vm = np.sqrt(vmx**2 + vmy**2 + vmz**2) 
+    Rt = snitch_state[:3] # Snitch position
+    Vt = snitch_state[3:] # Snitch velocity
+    Rm = seeker_state[:3] # Seeker poisition
+    Vm = seeker_state[3:] # Seeker velocity
 
-    lambda_angle = np.atan2((yt-ym), (xt-xm))
-    lambda_dot = ((xt-xm)*(vty-vmy) - (yt-ym)*(vtx-vmx)) / ((xt-xm)**2 + (yt-ym)**2) 
+    R = Rt - Rm # LOS
+    Vr = Vt - Vm # Velocity of snitch relative to seeker
 
-    lateral_accel = N * vm * lambda_dot # Acceleration perpendicular to snitch velocity [m/s^2]
-    
-    ax = -lateral_accel * np.cos(lambda_angle)
-    ay = lateral_accel * np.sin(lambda_angle)
+    R_dot_R = np.dot(R, R)
 
-    z_error = zt - zm
-    z_dot_error = vtz - vmz
-    az = 1.5 * z_error + 0.5 *z_dot_error # PD for z-accel in particular
+    if R_dot_R < 1e-6:
+        R_dot_R = 1e-6  # Avoid divide-by-zero
 
-    seeker_accel = np.array([ax, ay, az])
- 
-    if np.linalg.norm(seeker_accel) > max_seeker_accel:
-        seeker_accel = seeker_accel / np.linalg.norm(seeker_accel) * max_seeker_accel * np.sign(lateral_accel)
+    Omega = np.cross(R, Vr) / R_dot_R  # LOS rotation vector
+    seeker_accel = N * np.cross(Vr, Omega) # PN acceleration
+
+    # Clip to max acceleration
+    seeker_accel_mag = np.linalg.norm(seeker_accel)
+    if seeker_accel_mag > max_seeker_accel:
+        seeker_accel = seeker_accel/seeker_accel_mag * max_seeker_accel
 
     return seeker_accel
 
-def LQR_gimbal_control(snitch_state, seeker_state, max_gimbal, dt):
-    PN_accel = PN_guidance(snitch_state, seeker_state)
+# PID Controller
 
-    # A, B matrices derive from kinematics (system definition)
-    A_sys = np.array([[1, 0, 0, dt, 0, 0],
-                  [0, 1, 0, 0, dt, 0],
-                  [0, 0, 1, 0, 0, dt],
-                  [0, 0, 0, 1, 0, 0],
-                  [0, 0, 0, 0, 1, 0],
-                  [0, 0, 0, 0, 0, 1]
-                ])
+# Implement gimbal feedback control using seeker acceleration as an input
+def PID_gimbal_control(snitch_state, seeker_state, max_gimbal, dt):
+    integral_error = 0.0
+    prev_error = 0.0
+
+    optimal_PN_accel = PN_guidance(snitch_state, seeker_state)
+
+    seeker_velocity = seeker_state[-3:] # Broom pointing axis
     
-    B_sys = np.array([[0.5*dt**2, 0, 0],
-                  [0, 0.5*dt**2, 0],
-                  [0, 0, 0.5*dt**2],
-                  [dt, 0, 0],
-                  [0, dt, 0],
-                  [0, 0, dt]
-                ])
-    
-    # Q, R are cost matrices (state/control penalties)
-    Q_cost = np.diag([200, 200, 200, 20, 20, 20])
-    R_cost = np.diag([5, 5, 5])
-    # Q_cost = np.diag([100, 100, 100, 10, 10, 10]) # Tunable parameter
-    # R_cost = np.eye(3)
-
-    # Gain Matrix K to minimize cost function
-    K, __, __ = ct.lqr(A_sys, B_sys, Q_cost, R_cost)
-
-    e = seeker_state - snitch_state # Control input depends on error between full state dynamics
-    LQR_accel = -K @ e # Optimal acceleration as dictated by linear feedback law
-
-    broom_accel = PN_accel + LQR_accel 
-    
-    # At this stage, may violate gimbal constraint
-
-    seeker_velocity = seeker_state[-3:]
     if np.linalg.norm(seeker_velocity) < 1e-5:
-        broom_axis = np.array([1, 0, 0]) # Default
+        broom_axis = np.array([1.0, 0.0, 0.0]) # Default direction for small (likely initial) velocities
 
     else:
-        broom_axis = seeker_velocity / np.linalg.norm(seeker_velocity) # Broom axis is the direction of seeker velocity
+        broom_axis = seeker_velocity / np.linalg.norm(seeker_velocity)
 
-
-    # Apply gimbal constraint
-    broom_accel_norm = np.linalg.norm(broom_accel)
-
-    if broom_accel_norm > 1e-5: # check for zero acceleration
-        
-        broom_accel_dir = broom_accel / broom_accel_norm
-        gimbal_steer_angle = np.arccos(np.clip(np.dot(broom_accel_dir, broom_axis), -1.0, 1.0)) # Angle between 
-
-        max_angle_rad = np.deg2rad(max_gimbal)
-
-        if gimbal_steer_angle > max_angle_rad:
-            
-            rotation_axis = np.cross(broom_axis, broom_accel_dir) # Rotate broom axis toward commanded acceleration by max gimbal angle
-
-
-            if np.linalg.norm(rotation_axis) < 1e-5:
-                rotation_axis = np.array([0, 0, 1]) # Arbitrary axis if broom and acceleration axes are approx parallel
-
-            rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
-            
-            rotation = R.from_rotvec(max_angle_rad * rotation_axis) 
-            allowed_accel_dir = rotation.apply(broom_axis)
-
-            broom_accel = allowed_accel_dir * min(broom_accel_norm, max_seeker_accel)
-
-        else:
-            broom_accel = broom_accel * min(1.0, max_seeker_accel / broom_accel_norm)
+    if np.linalg.norm(optimal_PN_accel) < 1e-5:
+        desired_dir = broom_axis  # Do nothig if no need to accelerate
 
     else:
-        broom_accel = np.zeros(3)
+        desired_dir = optimal_PN_accel / np.linalg.norm(optimal_PN_accel)
 
-    gimbal_angle = np.rad2deg(gimbal_steer_angle)
+    # Angular difference between current broom axis and desired direction
+    angle_error = np.arccos(np.clip(np.dot(broom_axis, desired_dir), -1.0, 1.0))
+
+    # Rotate about this axis to gimbal
+    rotation_axis = np.cross(broom_axis, desired_dir)
+
+    if np.linalg.norm(rotation_axis) < 1e-5:
+        rotation_axis = np.array([0.0, 0.0, 1.0]) # Arbitrarily choose z-axis if the broom and desired axes are parallel or opposite
+
+    else:
+        rotation_axis = rotation_axis/np.linalg.norm(rotation_axis)
+
+    # PID Gains (Tunable)
+    Kp = 3.0 # Proportional Gain (present error)
+    Ki = 0.5 # Integral Gain (SS error)
+    Kd = 0.1 # Derivative Gain (future error)
+    
+    integral_error += angle_error * dt # Accumulate error discretely via numerical integration
+    derivative_error = (angle_error - prev_error) / dt # Discrete derivative error
+    prev_error = angle_error # For the next timestep
+
+    max_gimbal_rad = np.deg2rad(max_gimbal)
+
+    gimbal_angle = Kp * angle_error + Ki * integral_error + Kd * derivative_error
+    gimbal_angle = np.clip(gimbal_angle, -max_gimbal_rad, max_gimbal_rad) # Apply gimbal constraint
+
+    # Rotate broom axis toward desired direction by gimbal steering angle
+    rotation = R.from_rotvec(gimbal_angle * rotation_axis)
+    gimbal_direction = rotation.apply(broom_axis)
+
+    # Scale acceleration magnitude
+    accel_magnitude = min(np.linalg.norm(optimal_PN_accel), max_seeker_accel)
+    broom_accel = accel_magnitude * gimbal_direction
+
+    gimbal_angle = np.rad2deg(gimbal_angle)
 
     return broom_accel, gimbal_angle
 
 # Main Simulation Framework
-
 time = 0.0
 snitch_position_list = []
 seeker_position_list = []
@@ -201,8 +186,7 @@ while time < max_sim_time:
 
     # Out of Boudns Condition
     radial_distance = np.linalg.norm(seeker_position - ellipse_center)
-
-    if time > 250 and radial_distance > 15.24:
+    if time >= 300 and radial_distance > 15.24:
         print(f'Seeker out of bounds at t = {time} s')
         break
 
@@ -212,22 +196,21 @@ capture_time = time
 capture_position = seeker_position
 capture_distance_to_snitch = distance
 
-# Plots
+print(f'Distance to Capture: {capture_distance_to_snitch} m')
+print(f'Seeker Position at Capture: {capture_position} m')
 
+# Plots
 snitch_list = np.array(snitch_position_list)
 seeker_list = np.array(seeker_position_list)
 distance_list = np.array(distance_list)
 gimbal_angle_list = np.array(gimbal_angle_list)
 time_list = np.array(time_list)
 
-print("Snitch shape:", snitch_list.shape)
-print("Seeker shape:", seeker_list.shape)
-
 # 3D Trajectory
 fig1 = plt.figure(figsize=(8, 6))
 ax1 = fig1.add_subplot(111, projection='3d')
-ax1.plot(snitch_list[:, 0], snitch_list[:, 1], snitch_list[:, 2], 'o-', label='Snitch', linewidth=2)
-ax1.plot(seeker_list[:, 0], seeker_list[:, 1], seeker_list[:, 2], '-', label='Seeker', linewidth=2)
+ax1.plot(snitch_list[:, 0], snitch_list[:, 1], snitch_list[:, 2], label='Snitch', linewidth=1.5)
+ax1.plot(seeker_list[:, 0], seeker_list[:, 1], seeker_list[:, 2], label='Seeker', linewidth=1.5)
 ax1.set_xlabel('$x$ [m]')
 ax1.set_ylabel('$y$ [m]')
 ax1.set_zlabel('$z$ [m]')
