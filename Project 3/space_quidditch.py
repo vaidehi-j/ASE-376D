@@ -67,15 +67,15 @@ def PN_guidance(snitch_state, seeker_state):
     Rm = seeker_state[:3] # Seeker poisition
     Vm = seeker_state[3:] # Seeker velocity
 
-    R = Rt - Rm # LOS
+    R_LOS = Rt - Rm # LOS
     Vr = Vt - Vm # Velocity of snitch relative to seeker
 
-    R_dot_R = np.dot(R, R)
+    R_dot_R = np.dot(R_LOS, R_LOS)
 
     if R_dot_R < 1e-6:
         R_dot_R = 1e-6  # Avoid divide-by-zero
 
-    Omega = np.cross(R, Vr) / R_dot_R  # LOS rotation vector
+    Omega = np.cross(R_LOS, Vr) / R_dot_R  # LOS rotation vector
     seeker_accel = N * np.cross(Vr, Omega) # PN acceleration
 
     # Clip to max acceleration
